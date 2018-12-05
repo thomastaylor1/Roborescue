@@ -88,7 +88,8 @@ public final class LaunchSampleAgents {
         try {
             while (fb-- != 0) {
                 Logger.info("Connecting fire brigade " + (i++) + "...");
-                launcher.connect(new SampleFireBrigade());
+//                launcher.connect(new SampleFireBrigade());
+                launcher.connect(new LearningFireBrigade());
                 Logger.info("success");
             }
         }
@@ -100,7 +101,7 @@ public final class LaunchSampleAgents {
                 Logger.info("Connecting police force " + (i++) + "...");
                 launcher.connect(new SamplePoliceForce());
                 Logger.info("success");
-            }
+            }	
         }
         catch (ComponentConnectionException e) {
             Logger.info("failed: " + e.getMessage());
