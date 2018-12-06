@@ -4,11 +4,14 @@ import static rescuecore2.misc.Handy.objectsToIDs;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -37,23 +40,45 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     private static int nbStates = 4;
     private static int nbActions = 3;
     
-    private int state = 3;
-    private int previous_state = 3;
+    private int state = 2;
+    private int previous_state = 2;
     private int choice = 0;
     
     private final double alpha = 0.4;
     private final double beta = 8;
     private final double gamma = 0.9;
-    private int reward;
+    private double reward;
     private double[][] Q; 
+    
+    public enum Action{
+    	RANDOM_WALK(0),
+    	REPLENISH(1),
+    	EXTINGUISH(2);
+    	
+    	private final int value;
+    	
+    	Action(int value){
+    		this.value = value;
+    	}
+    	
+	   public static Action getAction(int value) {
+	      for (Action a : Action.values()) {
+	          if (a.value == value) return a;
+	      }
+	      return null;
+	   }
+	   
+	   public static int getRandomAction() {
+		   Random r = new Random();
+		   return r.nextInt(Action.values().length);
+	   }
+    }
     
     /* 
      * actions : 
      *  0 	Random Walk
      *  1	Replenish
-     *  2	Extinguish
-     * 	
-     * 
+     *  2	Extinguish 	
      * etats : 
      * water? 0 ou 1
      * bat en feu? 0 ou 1
@@ -109,9 +134,13 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     }
     
     // ACTION extinguishFire
-    public boolean extinguishFire(int time, EntityID id, ChangeSet changed) {
+    public boolean extinguishFire(int time, EntityID id, ChangeSet changed, FireBrigade me) {
     	StandardEntityURN entityType = StandardEntityURN.fromString(changed.getEntityURN(id));
     	if (!entityType.equals(StandardEntityURN.BUILDING)) {
+    		return false;
+    	}
+    	if (!haveWater()) {
+    		System.out.println("can't extinguish : i dont have water");
     		return false;
     	}
     	if (model.getDistance(getID(), id) <= maxDistance) {
@@ -133,7 +162,7 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     }
     
     //ACTION replenishWater
-    public boolean replenishWater(int time, ChangeSet changed) {
+    public boolean replenishWaterOld(int time, ChangeSet changed) {
     	if (location() instanceof Refuge) {
             Logger.info("Filling with water at " + location());
             sendRest(time);
@@ -142,6 +171,24 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     		return false;
     	}
     }
+    
+    //ACTION plan a path to refuge + replenishWater
+    public boolean replenishWater(int time, ChangeSet changed) {
+    	List<EntityID> path = search.breadthFirstSearch(me().getPosition(), refugeIDs);
+        if (path != null) {
+            Logger.info("Moving to refuge");
+            sendMove(time, path);
+        }
+    	if (location() instanceof Refuge) {
+            Logger.info("Filling with water at " + location());
+            sendRest(time);
+            return true;
+    	} else {
+    		return false;
+    	}
+    }
+    
+    /* Modification de l'état  */
     public int changeState(ChangeSet changed) {
     	int state = -1;
     	boolean isWater = haveWater();
@@ -160,35 +207,48 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	}
     	return state;
     }
-    public int chooseAction(int state, int previous_state, int choice) {
-    	List<Double> probas = new ArrayList<>();
-    	List<Double> probasCumulees = new ArrayList<>();
-    	Random r = new Random();
+    public int chooseAction() {
+    	// Choix de l'action avec les valeurs courantes
+    	return tirageDistribution();
+    }
+    
+    public void majQ(int state, int previous_state, int choice) {
+    	//Mise à jour de Q
     	double Qmax_row = maxTab(Q[choice]);
     	double delta = reward + Qmax_row - Q[previous_state][choice]; 
     	Q[previous_state][choice] += alpha *  delta;
     	reward = 0;
-    	int max = 0;
-    	double sum = 0;
+    }
+    
+    /* Calcule la probabilité de chaque action avec softmax sur les Q valeurs
+     * puis effectue un tirage sur la distribution
+     */
+    public int tirageDistribution() {
+    	List<Double> probas = new ArrayList<>();
+    	List<Double> probasCumulees = new ArrayList<>();
+    	Random r = new Random();
     	double denom = 0;
     	for(int i=0;i<nbActions;i++) {
     		for(Double d: toList(Q[state])) {
         		denom += Math.exp(beta*d);
         	}
     		probas.add(Math.exp(beta*Q[state][i]) / denom);
-    		probasCumulees.add(sum + (Math.exp(beta*Q[state][i]) / denom));
-    		if(probas.get(i) / denom > probas.get(max)) {
-    			max = i;
-    		}
-    		
     	}
+    	double sum = 0;
+    	for (Double proba : probas) {
+    		sum += proba;
+    		probasCumulees.add(sum);
+    	}
+    	probasCumulees.sort(Comparator.comparingDouble(Double::doubleValue)); //inutile
     	double tirage = r.nextDouble();
+    	int i = 0;
     	for(Double proba : probasCumulees) {
+    		i++;
     		if(proba.doubleValue() > tirage) {
-    			return probasCumulees.indexOf(proba);
+    			return i - 1;
     		}
     	}
-    	return max;
+    	return i - 1;
     }
     
     public List<Double> toList(double[] array){
@@ -237,74 +297,44 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
         }
         //print Q table
         for (int i=0; i<nbStates; i++) {
-        	
         	for(int j=0; j<nbActions;j++) {
         		System.out.print(Q[i][j]+"\t");
         	}
-        	System.out.println("Line "+i);
+        	System.out.println("State "+i);
         }
         System.out.println();
         FireBrigade me = me();
-        
-        choice = chooseAction(state, previous_state, choice);
+        int old_choice = choice;
+        choice = chooseAction();
         System.out.println("Etat courant : "+state);
-        System.out.println("Choix de l'action : "+choice);
-
-        
+        System.out.println("Choix de l'action : "+Action.getAction(choice));
+        System.out.println("Water level : "+me().getWater());
 		switch(choice) {
 			case 0:
 				randomMove(time);
-				reward = -1;
 		        break;	
 	        case 1:
-	        	if(!replenishWater(time, changed)) {
+	        	if(replenishWater(time, changed)) {
 	        		reward = 1;
 	        	} else {
-	        		reward = -1;
+	        		reward = -0.1;
 	        	}
 	        	break;
 	        case 2:
 	        	EntityID id = buildingsInMyRange(changed).get(0);
-	        	if (!extinguishFire(time, id, changed)) {
+	        	if (extinguishFire(time, id, changed, me)) {
 	        		reward = 1;
 	        	} else {
+	        		System.out.println("did not extinguish, recompense negative");
 	        		reward = -1;
 	        	}
-	        	
+	        		
 	        	break;
 		}
 		previous_state = state;
 		state = changeState(changed);
-		
-		//if (time%2 == 0) randomMove(time);
-		
-		
-//        // Are we currently filling with water?
-//        if (me.isWaterDefined() && me.getWater() < maxWater && location() instanceof Refuge) {
-//            Logger.info("Filling with water at " + location());
-//            sendRest(time);
-//            return;
-//        }
-//        // Are we out of water?
-//        if (me.isWaterDefined() && me.getWater() == 0) {
-//            // Head for a refuge
-//            List<EntityID> path = search.breadthFirstSearch(me().getPosition(), refugeIDs);
-//            if (path != null) {
-//                Logger.info("Moving to refuge");
-//                sendMove(time, path);
-//                return;
-//            }
-//            else {
-//                Logger.debug("Couldn't plan a path to a refuge.");
-//                path = randomWalk();
-//                Logger.info("Moving randomly");
-//                sendMove(time, path);
-//        	        return;
-//            }
-//        }
-//        List<EntityID> path = null;
-//        Logger.debug("Couldn't plan a path to a fire.");
-        
+		/* Mise à jour de la Q table */
+		majQ(state, previous_state, choice);    
     }
 
     @Override
