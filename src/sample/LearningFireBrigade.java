@@ -163,6 +163,11 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     		System.out.println("Can't extinguish : no water");
     		return false;
     	}
+    	
+    	if (me().getWater() < maxPower) {
+    		System.out.println("Can't extinguish : not enough water");
+    		return false;
+    	}
     	if (model.getDistance(getID(), id) <= maxDistance) {
     		Logger.info("Extinguishing " + id);
     		System.out.println("Extinguishing " + id);
@@ -183,17 +188,6 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
         Logger.info("Moving randomly");
         sendMove(time, path);
         return true;
-    }
-    
-    //ACTION replenishWater unused
-    public boolean replenishWaterOld(int time, ChangeSet changed) {
-    	if (location() instanceof Refuge) {
-            Logger.info("Filling with water at " + location());
-            sendRest(time);
-            return true;
-    	} else {
-    		return false;
-    	}
     }
     
     /* ACTION plan a path to refuge + replenishWater
@@ -314,6 +308,7 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
         maxWater = config.getIntValue(MAX_WATER_KEY);
         maxDistance = config.getIntValue(MAX_DISTANCE_KEY);
         maxPower = config.getIntValue(MAX_POWER_KEY);
+        System.out.println(maxPower);
         Q = new double[nbStates][nbActions];
         Logger.info("Sample fire brigade connected: max extinguish distance = " + maxDistance + ", max power = " + maxPower + ", max tank = " + maxWater);
     }
@@ -339,7 +334,6 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
 		
         System.out.println("Etat courant : "+state);
         System.out.println("Choix de l'action : "+Action.getAction(choice));
-        System.out.println("Water level : "+me().getWater());
         String alive = (me().getHP() > 0)?"yes":"no";
         System.out.println("Alive ? "+alive);
 		switch(choice) {
@@ -362,8 +356,7 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
 	        	if(fireInSight(changed)) {
 	        		EntityID id = getCloseBurningBuildings(changed).get(0);
 	        		if (extinguishFire(time, id, changed)) {
-		        		reward = 1.0;
-		        		System.out.println("Extinguishing fire");
+		        		reward = 0.2;
 		        	} else {
 		        		reward = -1.0; 
 		        		System.out.println("Did not extinguish, recompense negative");
@@ -374,6 +367,8 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
 	        	}
 	        	break;
 		}
+		System.out.println("Water level : "+me().getWater());
+		
         /* Affichage de la Q table */
         for (int i=0; i<nbStates; i++) {
         	for(int j=0; j<nbActions;j++) {
