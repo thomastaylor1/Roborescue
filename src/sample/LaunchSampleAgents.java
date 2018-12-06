@@ -64,7 +64,6 @@ public final class LaunchSampleAgents {
                         break;
                 }
             }
-            System.out.println(fb);
             // CHECKSTYLE:ON:ModifiedControlVariable
             ComponentLauncher launcher = new TCPComponentLauncher(host, port, config);
             connect(launcher, fb, pf, at, config);

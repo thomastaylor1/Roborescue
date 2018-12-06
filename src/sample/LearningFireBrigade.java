@@ -134,7 +134,7 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     }
     
     // ACTION extinguishFire
-    public boolean extinguishFire(int time, EntityID id, ChangeSet changed, FireBrigade me) {
+    public boolean extinguishFire(int time, EntityID id, ChangeSet changed) {
     	StandardEntityURN entityType = StandardEntityURN.fromString(changed.getEntityURN(id));
     	if (!entityType.equals(StandardEntityURN.BUILDING)) {
     		return false;
@@ -153,7 +153,9 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	}
     }
     
-    // ACTION randomMove
+    /* ACTION randomMove
+     * @return l'action a marché
+     */
     public boolean randomMove(int time) {
     	List<EntityID> path = randomWalk();
         Logger.info("Moving randomly");
@@ -161,7 +163,7 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
         return true;
     }
     
-    //ACTION replenishWater
+    //ACTION replenishWater unused
     public boolean replenishWaterOld(int time, ChangeSet changed) {
     	if (location() instanceof Refuge) {
             Logger.info("Filling with water at " + location());
@@ -172,17 +174,21 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	}
     }
     
-    //ACTION plan a path to refuge + replenishWater
+    /* ACTION plan a path to refuge + replenishWater
+     * @return l'action a marche
+     */
     public boolean replenishWater(int time, ChangeSet changed) {
     	List<EntityID> path = search.breadthFirstSearch(me().getPosition(), refugeIDs);
         if (path != null) {
             Logger.info("Moving to refuge");
             sendMove(time, path);
         }
-    	if (location() instanceof Refuge) {
-            Logger.info("Filling with water at " + location());
-            sendRest(time);
-            return true;
+    	if (haveWater()) {
+    		if (location() instanceof Refuge) {
+				Logger.info("Filling with water at " + location());
+	            sendRest(time);
+    		}
+    		return true;
     	} else {
     		return false;
     	}
@@ -224,6 +230,7 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
      * puis effectue un tirage sur la distribution
      */
     public int tirageDistribution() {
+    	// super mal codé, plein de choses inutiles
     	List<Double> probas = new ArrayList<>();
     	List<Double> probasCumulees = new ArrayList<>();
     	Random r = new Random();
@@ -295,15 +302,10 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
         for (Command next : heard) {
             Logger.debug("Heard " + next);
         }
-        //print Q table
-        for (int i=0; i<nbStates; i++) {
-        	for(int j=0; j<nbActions;j++) {
-        		System.out.print(Q[i][j]+"\t");
-        	}
-        	System.out.println("State "+i);
-        }
-        System.out.println();
+
         FireBrigade me = me();
+		previous_state = state;
+		state = changeState(changed);
         int old_choice = choice;
         choice = chooseAction();
         System.out.println("Etat courant : "+state);
@@ -315,26 +317,33 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
 		        break;	
 	        case 1:
 	        	if(replenishWater(time, changed)) {
-	        		reward = 1;
+	        		reward = 1.0;
 	        	} else {
 	        		reward = -0.1;
 	        	}
 	        	break;
 	        case 2:
-	        	EntityID id = buildingsInMyRange(changed).get(0);
-	        	if (extinguishFire(time, id, changed, me)) {
-	        		reward = 1;
-	        	} else {
-	        		System.out.println("did not extinguish, recompense negative");
-	        		reward = -1;
+	        	if(buildingsInMyRange(changed).size() > 0) {
+	        		EntityID id = buildingsInMyRange(changed).get(0);
+	        		if (extinguishFire(time, id, changed)) {
+		        		reward = 1.0;
+		        	} else {
+		        		//System.out.println("did not extinguish, recompense negative");
+		        		reward = -1.0;
+		        	}
 	        	}
-	        		
 	        	break;
 		}
-		previous_state = state;
-		state = changeState(changed);
 		/* Mise à jour de la Q table */
-		majQ(state, previous_state, choice);    
+		majQ(state, previous_state, old_choice);
+        /* Affichage de la Q table */
+        for (int i=0; i<nbStates; i++) {
+        	for(int j=0; j<nbActions;j++) {
+        		System.out.print(Q[i][j]+"\t");
+        	}
+        	System.out.println("State "+i);
+        }
+        System.out.println("~~~~~~~~~~~~");
     }
 
     @Override
