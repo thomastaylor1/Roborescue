@@ -125,15 +125,5 @@ public final class LaunchSampleAgents {
         catch (ComponentConnectionException e) {
             Logger.info("failed: " + e.getMessage());
         }
-//        try {
-//            while (true) {
-//                Logger.info("Connecting dummy agent " + (i++) + "...");
-//                launcher.connect(new DummyAgent());
-//                Logger.info("success");
-//            }
-//        }
-//        catch (ComponentConnectionException e) {
-//            Logger.info("failed: " + e.getMessage());
-//        }
     }
 }

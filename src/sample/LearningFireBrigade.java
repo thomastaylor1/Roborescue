@@ -7,6 +7,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -39,6 +45,7 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     
     private static int nbStates = 4;
     private static int nbActions = 3;
+    private static boolean read = true;
     
     private int state = 2;
     private int previous_state = 2;
@@ -49,6 +56,8 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     private final double gamma = 0.9;
     private double reward;
     private double[][] Q; 
+    
+    private int timesteps = 0;
     
     public enum Action{
     	RANDOM_WALK(0),
@@ -96,6 +105,9 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     private int maxDistance;
     private int maxPower;
 	
+    public boolean isDead() {
+    	return me().isHPDefined() && me().getHP() <= 0;
+    }
     
     public boolean haveWater() {
     	return me().getWater() > 0 && me().isWaterDefined();
@@ -126,6 +138,8 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
 //    	System.out.println(result);
     	return result;
     }
+    
+    
     
     public List<EntityID> buildingsInMyRange(ChangeSet changed) {
     	List<EntityID> result = new ArrayList<EntityID>();
@@ -212,7 +226,9 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	}
     }
     
-    /* Modification de l'état  */
+    /* Modification de l'état  
+     * @return state l'état courant
+     * */
     public int changeState(ChangeSet changed) {
     	int state = -1;
     	boolean isWater = haveWater();
@@ -285,6 +301,24 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	return l;
     }
     
+    public List<List<Double>> toList(double[][] array){
+    	List<List<Double>> l = new ArrayList<>();
+    	for(int i=0; i < array.length; i++) {
+    		l.add(toList(array[i]));
+    	}
+    	return l;
+    }
+    
+    public double[][] toArray(List<List<Double>> list){
+    	double[][] array = new double[list.size()][list.get(0).size()];
+    	for(int i=0; i<list.size(); i++) {
+    		for(Double d : list.get(i)) {
+    			array[i][list.get(i).indexOf(d)] = d.doubleValue();
+    		}
+    	}
+    	return array;
+    }
+    
     public double maxTab(double[] t) {
     	List<Double> l = new ArrayList<>();
     	for(double d: t) {
@@ -309,7 +343,13 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
         maxDistance = config.getIntValue(MAX_DISTANCE_KEY);
         maxPower = config.getIntValue(MAX_POWER_KEY);
         System.out.println(maxPower);
-        Q = new double[nbStates][nbActions];
+        if(read) {
+        	List<List<Double>> Qlist = readFromFile("modules/sample/src/sample/tables/Qtable.tmp");
+        	Q = toArray(Qlist);
+        } else {
+        	Q = new double[nbStates][nbActions];	
+        }
+      
         Logger.info("Sample fire brigade connected: max extinguish distance = " + maxDistance + ", max power = " + maxPower + ", max tank = " + maxWater);
     }
 
@@ -368,18 +408,63 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
 	        	break;
 		}
 		System.out.println("Water level : "+me().getWater());
+		System.out.println("List2D : "+toList(Q).toString());
+		writeToFile(toList(Q));
+		timesteps++;
+		if (timesteps > 300) {
+			writeToFile(toList(Q));
+		}
 		
         /* Affichage de la Q table */
-        for (int i=0; i<nbStates; i++) {
-        	for(int j=0; j<nbActions;j++) {
-        		System.out.print(Q[i][j]+"\t");
-        	}
-        	System.out.println("State "+i);
-        }
-        System.out.println("~~~~~~~~~~~~");
+//        for (int i=0; i<nbStates; i++) {
+//        	for(int j=0; j<nbActions;j++) {
+//        		System.out.print(Q[i][j]+"\t");
+//        	}
+//        	System.out.println("State "+i);
+//        }
+//        System.out.println("~~~~~~~~~~~~");
     }
 
-    @Override
+    private void writeToFile(List<List<Double>> list) {
+		File file;
+		FileOutputStream fos;
+		try {
+			file = new File("modules/sample/src/sample/tables/Qtable.tmp");
+			if (!file.exists()) {
+				file.createNewFile();
+			}
+			fos = new FileOutputStream("modules/sample/src/sample/tables/Qtable.tmp");
+			ObjectOutputStream oos = new ObjectOutputStream(fos);
+			oos.writeObject(list);
+			oos.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+    
+    private List<List<Double>> readFromFile(String filename) {
+		File file;
+		FileInputStream fis;
+		List<List<Double>> values;
+		try {
+			file = new File(filename);
+			if (!file.exists()) {
+				file.createNewFile();
+			}
+			fis = new FileInputStream(filename);
+			ObjectInputStream ois = new ObjectInputStream(fis);
+			values = (List<List<Double>>) ois.readObject();
+			ois.close();
+			return values;
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		}
+		return null;
+	}
+
+	@Override
     protected EnumSet<StandardEntityURN> getRequestedEntityURNsEnum() {
         return EnumSet.of(StandardEntityURN.FIRE_BRIGADE);
     }
