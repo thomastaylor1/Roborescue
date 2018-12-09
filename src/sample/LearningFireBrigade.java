@@ -7,6 +7,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
+
+import kernel.ui.ScoreTable;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -45,7 +48,7 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     
     private static int nbStates = 4;
     private static int nbActions = 3;
-    private static boolean read = true;
+    private static boolean read = false;
     
     private int state = 2;
     private int previous_state = 2;
@@ -58,7 +61,8 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     private double[][] Q; 
     
     private int timesteps = 0;
-    
+    private int nbExtinguishSuccess = 0;
+    private int[] extinguishSuccess;
     public enum Action{
     	RANDOM_WALK(0),
     	REPLENISH(1),
@@ -140,7 +144,6 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     }
     
     
-    
     public List<EntityID> buildingsInMyRange(ChangeSet changed) {
     	List<EntityID> result = new ArrayList<EntityID>();
     	for (EntityID entity : changed.getChangedEntities()) {	
@@ -158,7 +161,7 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     public boolean extinguishFire(int time, EntityID id, ChangeSet changed) {
     	StandardEntityURN entityType = StandardEntityURN.fromString(changed.getEntityURN(id));
     	if (!entityType.equals(StandardEntityURN.BUILDING)) {
-    		System.out.println("Can't extinguish : not a building");
+    		//System.out.println("Can't extinguish : not a building");
     		return false;
     	}
     	Set<Property> props = changed.getChangedProperties(id);
@@ -167,29 +170,29 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
 			if (propType.equals(StandardPropertyURN.FIERYNESS)) {
 				int fieryness = (int) prop.getValue();
 				if (fieryness == 0) {
-					System.out.println("Can't extinguish : not on fire");
+//					System.out.println("Can't extinguish : not on fire");
 					return false;
 				}
 			}
 		}
     	
     	if (!haveWater()) {
-    		System.out.println("Can't extinguish : no water");
+//    		System.out.println("Can't extinguish : no water");
     		return false;
     	}
     	
     	if (me().getWater() < maxPower) {
-    		System.out.println("Can't extinguish : not enough water");
+//    		System.out.println("Can't extinguish : not enough water");
     		return false;
     	}
     	if (model.getDistance(getID(), id) <= maxDistance) {
     		Logger.info("Extinguishing " + id);
-    		System.out.println("Extinguishing " + id);
+//    		System.out.println("Extinguishing " + id);
             sendExtinguish(time, id, maxPower);
             sendSpeak(time, 1, ("Extinguishing " + id).getBytes());
             return true;
     	} else {
-    		System.out.println("Can't extinguish : too far");
+//    		System.out.println("Can't extinguish : too far");
     		return false;
     	}
     }
@@ -215,7 +218,7 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
         }
     	if (haveWater() && me().getWater() < maxWater) {
     		if (location() instanceof Refuge) {
-				System.out.println("Filling with water at " + location());
+//				System.out.println("Filling with water at " + location());
 	            sendRest(time);
 	            return true;
     		} else {
@@ -342,14 +345,20 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
         maxWater = config.getIntValue(MAX_WATER_KEY);
         maxDistance = config.getIntValue(MAX_DISTANCE_KEY);
         maxPower = config.getIntValue(MAX_POWER_KEY);
-        System.out.println(maxPower);
+        extinguishSuccess = new int[255];
         if(read) {
         	List<List<Double>> Qlist = readFromFile("modules/sample/src/sample/tables/Qtable.tmp");
         	Q = toArray(Qlist);
         } else {
         	Q = new double[nbStates][nbActions];	
         }
-      
+        System.out.println("Starting with Q table : ");
+	    for (int i=0; i<nbStates; i++) {
+	    	for(int j=0; j<nbActions;j++) {
+	    		System.out.print(Q[i][j]+"\t");
+	      	}
+	    	System.out.println("State "+i);
+	    }
         Logger.info("Sample fire brigade connected: max extinguish distance = " + maxDistance + ", max power = " + maxPower + ", max tank = " + maxWater);
     }
 
@@ -372,10 +381,13 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
 		/* Mise à jour de la Q table */
 		majQ(state, previous_state, old_choice);
 		
-        System.out.println("Etat courant : "+state);
-        System.out.println("Choix de l'action : "+Action.getAction(choice));
-        String alive = (me().getHP() > 0)?"yes":"no";
-        System.out.println("Alive ? "+alive);
+//        System.out.println("Etat courant : "+state);
+//        System.out.println("Choix de l'action : "+Action.getAction(choice));
+//        
+//        System.out.println("Water level : "+me().getWater());
+//        String alive = (me().getHP() > 0)?"yes":"no";
+//        System.out.println("Alive ? "+alive);
+//        
 		switch(choice) {
 			case 0:
 				randomMove(time);
@@ -385,7 +397,7 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
 	        		reward = 1.0;
 	        	} else {
 	        		if(me().getWater() == maxWater) {
-	        			reward = -1.0;
+	        			reward = -1.0; 
 	        		} else {
 		        		reward = -0.1;
 	        		}
@@ -396,24 +408,25 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
 	        	if(fireInSight(changed)) {
 	        		EntityID id = getCloseBurningBuildings(changed).get(0);
 	        		if (extinguishFire(time, id, changed)) {
+	        			nbExtinguishSuccess++;
 		        		reward = 0.2;
 		        	} else {
 		        		reward = -1.0; 
-		        		System.out.println("Did not extinguish, recompense negative");
+		        		//System.out.println("Did not extinguish, recompense negative");
 		        	}
 	        	} else {
-	        		System.out.println("Can't extinguish : no fire");
+	        		//System.out.println("Can't extinguish : no fire");
 	        		reward = -1.0;
 	        	}
 	        	break;
 		}
-		System.out.println("Water level : "+me().getWater());
-		System.out.println("List2D : "+toList(Q).toString());
-		writeToFile(toList(Q));
+		
 		timesteps++;
-		if (timesteps > 300) {
+		System.out.println(timesteps);
+		if (timesteps > 200) {
 			writeToFile(toList(Q));
 		}
+		System.out.println(me().getProperties().toString());
 		
         /* Affichage de la Q table */
 //        for (int i=0; i<nbStates; i++) {
