@@ -7,9 +7,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
-
-import com.sun.swing.internal.plaf.synth.resources.synth;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -27,6 +24,7 @@ import java.util.HashSet;
 
 import rescuecore2.worldmodel.EntityID;
 import rescuecore2.worldmodel.Property;
+import sample.LearningFireBrigade.Action;
 import rescuecore2.worldmodel.ChangeSet;
 import rescuecore2.messages.Command;
 import rescuecore2.log.Logger;
@@ -38,17 +36,14 @@ import rescuecore2.standard.entities.Building;
 import rescuecore2.standard.entities.Refuge;
 import rescuecore2.standard.entities.FireBrigade;
 
-/**
-   A sample fire brigade agent.
- */
-public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
+public class LearningMultiFireBrigade extends AbstractSampleAgent<FireBrigade> {
     private static final String MAX_WATER_KEY = "fire.tank.maximum";
     private static final String MAX_DISTANCE_KEY = "fire.extinguish.max-distance";
     private static final String MAX_POWER_KEY = "fire.extinguish.max-sum";
     
-    private static int nbStates = 4;
-    private static int nbActions = 3;
-    private static boolean read = false;
+    private static int nbStates = 8;
+    private static int nbActions = 6;
+    private static boolean read = true;
     
     private int state = 2;
     private int previous_state = 2;
@@ -61,17 +56,15 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     private double[][] Q; 
     
     private int timesteps = 0;
-    private static int idTable = 0;
-    private int id;
-    
-    public synchronized void incrementId() {
-    	idTable++;
-    }
     
     public enum Action{
     	RANDOM_WALK(0),
     	REPLENISH(1),
-    	EXTINGUISH(2);
+    	EXTINGUISH(2),
+    	HELP_SAY(3),
+    	HELP_TELL(4),
+    	DEAL_MESSAGE(5);
+    	
     	
     	private final int value;
     	
@@ -96,18 +89,29 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
      * actions : 
      *  0 	Random Walk
      *  1	Replenish
-     *  2	Extinguish 	
+     *  2	Extinguish 
+     *  3 	ask for help-say
+     *  4   ask for help-tell
+     *  5   deal-message
+     *
      * etats : 
      * water? 0 ou 1
      * bat en feu? 0 ou 1
-     * 0 = 0, 0
-     * 1 = 0, 1
-     * 2 = 1, 0
-     * 3 = 1, 1
+     * message reçu ? 0 ou 1
+     * 0 = 0, 0, 0
+     * 1 = 0, 1, 0
+     * 2 = 1, 0, 0
+     * 3 = 1, 1, 0
+     * 
+     * 4 = 0, 0, 1
+     * 5 = 0, 1, 1
+     * 6 = 1, 0, 1
+     * 7 = 1, 1, 1
      * 
      * recompense : 
-     * rew = -1 si l'action n'a pas marché
-     * rew = 1 si un feu est éteint
+     * rew = -5 si l'action n'a pas marché
+     * rew = +10 si un feu est éteint
+     * rew = -50 si un batiment est détruit
      */
     
     private int maxWater;
@@ -119,17 +123,18 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     }
     
     public boolean haveWater() {
-    	return me().getWater() >= maxPower && me().isWaterDefined();
+    	return me().getWater() > 0 && me().isWaterDefined();
     }
     
     public boolean fireInSight(ChangeSet changed) {
     	return getCloseBurningBuildings(changed).size() > 0;
     }
     
+    public boolean hasMessage(ChangeSet changed) {
+    	return true;
+    }
+    
     public List<EntityID> getCloseBurningBuildings(ChangeSet changed){
-    	//System.out.println("changed");
-    	//System.out.println(changed);
-    	
     	List<EntityID> result = new ArrayList<EntityID>();
     	Set<EntityID> entities = changed.getChangedEntities();
     	for (EntityID entity : entities) {
@@ -140,20 +145,49 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
 	    			StandardPropertyURN propType = StandardPropertyURN.fromString(prop.getURN());
 	    			if (propType.equals(StandardPropertyURN.FIERYNESS)) {
 	    				int fieryness = (int) prop.getValue();
-	    				if (fieryness > 0 && fieryness < 8) {
+	    				if (fieryness > 0) {
 	    					result.add(entity);
 	    				}
 	    			}
 	    		}
     		}
-    		
+    	}
+//    	System.out.println(result);
+    	return result;
+    }
+    
+    /* Detecte un feu et s'il est pris en charge par un autre agent
+     * @return 0 si pas de feu, 1 si feu libre et 2 si feu pris en charge
+     */
+    public int fireInCharge(ChangeSet changed) {
+    	int result = 1;
+    	
+    	if(!fireInSight(changed)) {
+    		return 0;
+    	}
+    	
+    	Set<EntityID> entities = changed.getChangedEntities();
+    	List<EntityID> agents = new ArrayList<EntityID>();
+    	
+    	//cree liste d'agents a portee
+    	for (EntityID entity : entities) {
+    		StandardEntityURN entityType = StandardEntityURN.fromString(changed.getEntityURN(entity));
     		if(entityType.equals(StandardEntityURN.FIRE_BRIGADE)) {
-//    			System.out.println("FIRE BRIGADE DETECTED");
-//    			System.out.println(entity);
-//    			System.out.println(entity.getValue());
+    			agents.add(entity);
     		}
     	}
-    	System.out.println(result);
+    	
+    	List<EntityID> buildings = new ArrayList<EntityID>();
+    	buildings = getCloseBurningBuildings(changed);
+    	
+    	for (EntityID agent : agents) {
+        	for (EntityID building : buildings) {
+        		
+        	}
+    	}
+    	
+    	
+    	
     	return result;
     }
     
@@ -174,43 +208,40 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
      * @return l'action a marche
      */
     public boolean extinguishFire(int time, EntityID id, ChangeSet changed) {
-//    	StandardEntityURN entityType = StandardEntityURN.fromString(changed.getEntityURN(id));
-//    	if (!entityType.equals(StandardEntityURN.BUILDING)) {
-////    		System.out.println("Can't extinguish : not a building");
-//    		return false;
-//    	}
-//    	Set<Property> props = changed.getChangedProperties(id);
-//    	for (Property prop : props) {
-//			StandardPropertyURN propType = StandardPropertyURN.fromString(prop.getURN());
-//			if (propType.equals(StandardPropertyURN.FIERYNESS)) {
-//				int fieryness = (int) prop.getValue();
-//				if (fieryness == 0) {
-//					System.out.println("Can't extinguish : not on fire");
-//					return false;
-//				}
-//			}
-//		}
+    	StandardEntityURN entityType = StandardEntityURN.fromString(changed.getEntityURN(id));
+    	if (!entityType.equals(StandardEntityURN.BUILDING)) {
+    		System.out.println("Can't extinguish : not a building");
+    		return false;
+    	}
+    	Set<Property> props = changed.getChangedProperties(id);
+    	for (Property prop : props) {
+			StandardPropertyURN propType = StandardPropertyURN.fromString(prop.getURN());
+			if (propType.equals(StandardPropertyURN.FIERYNESS)) {
+				int fieryness = (int) prop.getValue();
+				if (fieryness == 0) {
+					System.out.println("Can't extinguish : not on fire");
+					return false;
+				}
+			}
+		}
+    	
     	if (!haveWater()) {
     		System.out.println("Can't extinguish : no water");
-    		reward = -0.5;
     		return false;
     	}
     	
-//    	if(location() instanceof Refuge) {
-//    		reward = -0.5;
-//    		return false;
-//    	}
-    	
+    	if (me().getWater() < maxPower) {
+    		System.out.println("Can't extinguish : not enough water");
+    		return false;
+    	}
     	if (model.getDistance(getID(), id) <= maxDistance) {
     		Logger.info("Extinguishing " + id);
     		System.out.println("Extinguishing " + id);
             sendExtinguish(time, id, maxPower);
             sendSpeak(time, 1, ("Extinguishing " + id).getBytes());
-            reward = 1;
             return true;
     	} else {
     		System.out.println("Can't extinguish : too far");
-    		reward = 0;
     		return false;
     	}
     }
@@ -228,26 +259,6 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     /* ACTION plan a path to refuge + replenishWater
      * @return l'action a marche
      */
-    /*
-    public boolean replenishWater(int time, ChangeSet changed) {
-    	List<EntityID> path = search.breadthFirstSearch(me().getPosition(), refugeIDs);
-        if (path != null) {
-            Logger.info("Moving to refuge");
-            sendMove(time, path);
-        }
-    	if (haveWater() && me().getWater() < maxWater) {
-    		if (location() instanceof Refuge) {
-				System.out.println("Filling with water at " + location());
-	            sendRest(time);
-	            return true;
-    		} else {
-    			return false;
-    		}
-    	} else {
-    		return false;
-    	}
-    }*/
-    
     public boolean replenishWater(int time, ChangeSet changed) {
     	if(me().getWater() == maxWater) {
     		return false;
@@ -259,7 +270,7 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
         }
     	if (me().getWater() < maxWater) { //haveWater()
     		if (location() instanceof Refuge) {
-//				System.out.println("Filling with water at " + location());
+				System.out.println("Filling with water at " + location());
 	            sendRest(time);
 	          
     		} 
@@ -270,6 +281,22 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	
     }
     
+    public boolean askForHelp_Tell(int time, ChangeSet changed) {
+    	return true;
+    }
+    
+    public boolean askForHelp_Say(int time, ChangeSet changed) {
+    	return true;
+    }
+    
+    public boolean dealWithMessage(int time, ChangeSet changed) {
+    	return true;
+    }
+    
+    
+    
+    
+    
     /* Modification de l'état  
      * @return state l'état courant
      * */
@@ -277,18 +304,35 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	int state = -1;
     	boolean isWater = haveWater();
     	boolean isFire = fireInSight(changed);
-    	if (isWater == false && isFire == false) {
+    	boolean hasMessage = hasMessage(changed);
+    	
+    	if (isWater == false && isFire == false && hasMessage == false ) {
     		return 0;
     	}
-    	if (isWater == false && isFire == true) {
+    	if (isWater == false && isFire == true && hasMessage == false ) {
     		return 1;
     	}
-    	if (isWater == true && isFire == false) {
+    	if (isWater == true && isFire == false && hasMessage == false ) {
     		return 2;
     	}
-    	if (isWater == true && isFire == true) {
+    	if (isWater == true && isFire == true && hasMessage == false ) {
     		return 3;
     	}
+    	
+    	if (isWater == false && isFire == false && hasMessage == true ) {
+    		return 4;
+    	}
+    	if (isWater == false && isFire == true && hasMessage == true ) {
+    		return 5;
+    	}
+    	if (isWater == true && isFire == false && hasMessage == true ) {
+    		return 6;
+    	}
+    	if (isWater == true && isFire == true && hasMessage == true ) {
+    		return 7;
+    	}
+    	
+    	
     	return state;
     }
     public int chooseAction() {
@@ -386,26 +430,13 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
         maxWater = config.getIntValue(MAX_WATER_KEY);
         maxDistance = config.getIntValue(MAX_DISTANCE_KEY);
         maxPower = config.getIntValue(MAX_POWER_KEY);
-//        System.out.println(maxPower);
+        System.out.println(maxPower);
         if(read) {
-        	id = idTable;
-        	List<List<Double>> Qlist = readFromFile("modules/sample/src/sample/tables/Qtable"+id+".tmp");
-        	incrementId();
-        	System.out.println(idTable);
+        	List<List<Double>> Qlist = readFromFile("Qtable_multi.tmp");
         	Q = toArray(Qlist);
-        	System.out.println("Starting with Q table : ");
-     	    for (int i=0; i<nbStates; i++) {
-     	    	for(int j=0; j<nbActions;j++) {
-     	    		System.out.print(Q[i][j]+"\t");
-     	      	}
-	     	    	System.out.println("State "+i);
-	     	    }
-	        } else {
-	        	id = idTable;
-	        	incrementId();
-	        	System.out.println(idTable);
-	        	Q = new double[nbStates][nbActions];	
-	        }
+        } else {
+        	Q = new double[nbStates][nbActions];	
+        }
       
         Logger.info("Sample fire brigade connected: max extinguish distance = " + maxDistance + ", max power = " + maxPower + ", max tank = " + maxWater);
     }
@@ -424,17 +455,6 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
 		previous_state = state;
 		int old_choice = choice;
 		state = changeState(changed);
-		
-		if(location() instanceof Refuge) {
-			if(!fireInSight(changed)) {
-				state = 2;
-			} else {
-				state = 3;
-			}
-		}
-		
-		int currWater = me().getWater();
-		
 		choice = chooseAction();
 		
 		/* Mise à jour de la Q table */
@@ -444,64 +464,63 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
         System.out.println("Choix de l'action : "+Action.getAction(choice));
         String alive = (me().getHP() > 0)?"yes":"no";
         System.out.println("Alive ? "+alive);
-        
-        
 		switch(choice) {
-		case 0:
-			reward = 0.0;
-			randomMove(time);
-	        break;	
-        case 1:
-//        	if(replenishWater(time, changed)) {
-//        		reward = 0.5;
-//        	} else {
-//	        	reward = -50.0; // tente de remplir mais est déja au max je ne pense 
-//        	}
-        	reward = 0.0;
-        	replenishWater(time, changed);
-        	break;
-        case 2:
-        	if(fireInSight(changed)) {
-        		EntityID id = getCloseBurningBuildings(changed).get(0);
-        		me().setWater(currWater);
-        		extinguishFire(time, id, changed);
-        	}
-//        	} else {
-////        		System.out.println("Can't extinguish : no fire");
-//        		reward = -50.0;
-//        	}
-        	break;
+			case 0:
+				reward = 0.0;
+				randomMove(time);
+		        break;	
+	        case 1:
+	        	if(replenishWater(time, changed)) {
+	        		reward = 5.0;
+	        	} else {
+		        		reward = -500.0; // tente de remplir mais est déja au max je ne pense 
+	        		}
+
+	        	break;
+	        case 2:
+	        	if(fireInSight(changed)) {
+	        		EntityID id = getCloseBurningBuildings(changed).get(0);
+	        		if (extinguishFire(time, id, changed)) {
+		        		reward = 10;
+		        	} else {
+		        		reward = -50.0; 
+		        		System.out.println("Did not extinguish, recompense negative");
+		        	}
+	        	} else {
+	        		System.out.println("Can't extinguish : no fire");
+	        		reward = -500.0;
+	        	}
+	        	break;
 		}
-        System.out.println("Reward : "+reward);
+		// Pas convaincu tout de même par cette méthode mais elle est justifiable
+		
 		System.out.println("Water level : "+me().getWater());
-//		System.out.println("List2D : "+toList(Q).toString());
+		System.out.println("List2D : "+toList(Q).toString());
 		writeToFile(toList(Q));
-		if (time == 250) {
+		timesteps++;
+		if (timesteps > 300) {
 			writeToFile(toList(Q));
 		}
 		
         /* Affichage de la Q table */
-        for (int i=0; i<nbStates; i++) {
-        	for(int j=0; j<nbActions;j++) {
-        		System.out.print(Q[i][j]+"\t");
-        	}
-        	System.out.println("State "+i);
-        }
-        System.out.println("~~~~~~~~~~~~");
-        
+//        for (int i=0; i<nbStates; i++) {
+//        	for(int j=0; j<nbActions;j++) {
+//        		System.out.print(Q[i][j]+"\t");
+//        	}
+//        	System.out.println("State "+i);
+//        }
+//        System.out.println("~~~~~~~~~~~~");
     }
 
     private void writeToFile(List<List<Double>> list) {
 		File file;
 		FileOutputStream fos;
 		try {
-			file = new File("modules/sample/src/sample/tables/Qtable"+id+".tmp");
-//			file = new File("Qtable.tmp");
+			file = new File("Qtable_multi.tmp");
 			if (!file.exists()) {
 				file.createNewFile();
 			}
-			fos = new FileOutputStream("modules/sample/src/sample/tables/Qtable"+id+".tmp");
-//			fos = new FileOutputStream("Qtable.tmp");
+			fos = new FileOutputStream("Qtable_multi.tmp");
 			ObjectOutputStream oos = new ObjectOutputStream(fos);
 			oos.writeObject(list);
 			oos.close();
@@ -562,3 +581,4 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
         return search.breadthFirstSearch(me().getPosition(), objectsToIDs(targets));
     }
 }
+

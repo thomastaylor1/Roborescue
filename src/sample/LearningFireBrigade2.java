@@ -7,9 +7,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
-
-import com.sun.swing.internal.plaf.synth.resources.synth;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -41,12 +38,12 @@ import rescuecore2.standard.entities.FireBrigade;
 /**
    A sample fire brigade agent.
  */
-public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
+public class LearningFireBrigade2 extends AbstractSampleAgent<FireBrigade> {
     private static final String MAX_WATER_KEY = "fire.tank.maximum";
     private static final String MAX_DISTANCE_KEY = "fire.extinguish.max-distance";
     private static final String MAX_POWER_KEY = "fire.extinguish.max-sum";
     
-    private static int nbStates = 4;
+    private static int nbStates = 8;
     private static int nbActions = 3;
     private static boolean read = false;
     
@@ -61,12 +58,6 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     private double[][] Q; 
     
     private int timesteps = 0;
-    private static int idTable = 0;
-    private int id;
-    
-    public synchronized void incrementId() {
-    	idTable++;
-    }
     
     public enum Action{
     	RANDOM_WALK(0),
@@ -113,6 +104,9 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     private int maxWater;
     private int maxDistance;
     private int maxPower;
+	private boolean Isrefuge() {
+		return location() instanceof Refuge;
+	}
 	
     public boolean isDead() {
     	return me().isHPDefined() && me().getHP() <= 0;
@@ -196,10 +190,10 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     		return false;
     	}
     	
-//    	if(location() instanceof Refuge) {
-//    		reward = -0.5;
-//    		return false;
-//    	}
+    	if(state==5 || state ==4) {
+    		reward = -0.5;
+    		return false;
+    	}
     	
     	if (model.getDistance(getID(), id) <= maxDistance) {
     		Logger.info("Extinguishing " + id);
@@ -277,17 +271,30 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	int state = -1;
     	boolean isWater = haveWater();
     	boolean isFire = fireInSight(changed);
-    	if (isWater == false && isFire == false) {
+    	boolean refuge=Isrefuge();
+    	if (isWater == false && isFire == false && refuge == false) {
     		return 0;
     	}
-    	if (isWater == false && isFire == true) {
+    	if (isWater == false && isFire == true && refuge == false) {
     		return 1;
     	}
-    	if (isWater == true && isFire == false) {
+    	if (isWater == true && isFire == false && refuge == false) {
     		return 2;
     	}
-    	if (isWater == true && isFire == true) {
+    	if (isWater == true && isFire == true && refuge == false) {
     		return 3;
+    	}
+    	if (isWater == false && isFire == false && refuge == true) {
+    		return 4;
+    	}
+    	if (isWater == false && isFire == true && refuge == true) {
+    		return 5;
+    	}
+    	if (isWater == true && isFire == false && refuge == true) {
+    		return 6;
+    	}
+    	if (isWater == true && isFire == true && refuge == true) {
+    		return 7;
     	}
     	return state;
     }
@@ -388,10 +395,7 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
         maxPower = config.getIntValue(MAX_POWER_KEY);
 //        System.out.println(maxPower);
         if(read) {
-        	id = idTable;
-        	List<List<Double>> Qlist = readFromFile("modules/sample/src/sample/tables/Qtable"+id+".tmp");
-        	incrementId();
-        	System.out.println(idTable);
+        	List<List<Double>> Qlist = readFromFile("modules/sample/src/sample/tables/Qtable.tmp");
         	Q = toArray(Qlist);
         	System.out.println("Starting with Q table : ");
      	    for (int i=0; i<nbStates; i++) {
@@ -401,9 +405,6 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
 	     	    	System.out.println("State "+i);
 	     	    }
 	        } else {
-	        	id = idTable;
-	        	incrementId();
-	        	System.out.println(idTable);
 	        	Q = new double[nbStates][nbActions];	
 	        }
       
@@ -424,15 +425,6 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
 		previous_state = state;
 		int old_choice = choice;
 		state = changeState(changed);
-		
-		if(location() instanceof Refuge) {
-			if(!fireInSight(changed)) {
-				state = 2;
-			} else {
-				state = 3;
-			}
-		}
-		
 		int currWater = me().getWater();
 		
 		choice = chooseAction();
@@ -476,7 +468,7 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
 		System.out.println("Water level : "+me().getWater());
 //		System.out.println("List2D : "+toList(Q).toString());
 		writeToFile(toList(Q));
-		if (time == 250) {
+		if (time > 200) {
 			writeToFile(toList(Q));
 		}
 		
@@ -495,12 +487,12 @@ public class LearningFireBrigade extends AbstractSampleAgent<FireBrigade> {
 		File file;
 		FileOutputStream fos;
 		try {
-			file = new File("modules/sample/src/sample/tables/Qtable"+id+".tmp");
+			file = new File("modules/sample/src/sample/tables/Qtable.tmp");
 //			file = new File("Qtable.tmp");
 			if (!file.exists()) {
 				file.createNewFile();
 			}
-			fos = new FileOutputStream("modules/sample/src/sample/tables/Qtable"+id+".tmp");
+			fos = new FileOutputStream("modules/sample/src/sample/tables/Qtable.tmp");
 //			fos = new FileOutputStream("Qtable.tmp");
 			ObjectOutputStream oos = new ObjectOutputStream(fos);
 			oos.writeObject(list);
